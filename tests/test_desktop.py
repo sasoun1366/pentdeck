@@ -24,10 +24,30 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-QtWidgets = pytest.importorskip("PyQt6.QtWidgets", reason="the dashboard needs PyQt6")
-pytest.importorskip("PyQt6.QtCore")
+def _load_qt():
+    """Import PyQt6, or skip this whole module.
 
-from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox      # noqa: E402
+    Two things are expected and neither is a broken dashboard:
+
+    * PyQt6 is simply not installed — it is an optional extra;
+    * PyQt6 is installed but cannot load its system libraries (libEGL, libxkbcommon,
+      …), which raises ImportError from a shared object rather than ModuleNotFoundError.
+
+    A CI runner that has no Qt libraries should say "skipped", not "failed" — the point
+    of the workflow is to catch a broken tool, not a bare container.
+    """
+    try:
+        from PyQt6 import QtCore, QtWidgets
+    except ImportError as exc:                                # noqa: PERF203 - one import to guard
+        pytest.skip(f"the dashboard needs PyQt6 and its system libraries ({exc})",
+                    allow_module_level=True)
+    return QtCore, QtWidgets
+
+
+QtCore, QtWidgets = _load_qt()
+QApplication = QtWidgets.QApplication
+QFileDialog = QtWidgets.QFileDialog
+QMessageBox = QtWidgets.QMessageBox
 
 from pentdeck import engine, license as lic, report                      # noqa: E402
 from pentdeck.cli import build_parser                                    # noqa: E402

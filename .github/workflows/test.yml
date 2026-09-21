@@ -18,10 +18,19 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install
         run: pip install -e ".[dev]"
+      - name: Install the Qt system libraries
+        # A bare runner has the Python side of Qt but none of the C libraries it links
+        # against, so the dashboard tests would skip themselves on every push. These are
+        # the ones an offscreen QApplication actually needs.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 libfontconfig1 libdbus-1-3 \
+            libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 || true
       - name: Install the desktop extra (best effort)
-        # The dashboard tests skip themselves when PyQt6 is missing, so a Qt wheel that
-        # will not install on this runner must not fail the build — but when it does
-        # install, those 25 tests run like any other.
+        # If the wheel will not install here, the dashboard tests skip themselves — a
+        # missing optional extra must not fail the build.
         run: pip install "PyQt6>=6.6" || echo "PyQt6 unavailable — the dashboard tests will be skipped"
       - name: Run tests
         env:
