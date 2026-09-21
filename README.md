@@ -89,10 +89,12 @@ you would run them — the dashboard is launched with `Start-Process`, which is 
 double-click does, because a windowed build has no console and that is exactly where a
 startup bug hides:
 
+[**Download the latest release →**](https://github.com/sasoun1366/pentdeck/releases/latest)
+
 | download | what it is |
 | --- | --- |
-| `pentdeck-<version>-windows-desktop.exe` | the dashboard: double-click and it opens. State in `%USERPROFILE%\.pentdeck` |
-| `pentdeck-<version>-windows-cli.exe` | the same tool on the command line, for scripted runs and CI |
+| `pentdeck-<version>-windows-desktop.exe` (36.6 MB) | the dashboard: double-click and it opens. State in `%USERPROFILE%\.pentdeck` |
+| `pentdeck-<version>-windows-cli.exe` (9.3 MB) | the same tool on the command line, for scripted runs and CI |
 
 Both are one file, no installer, no Python required. Licences work the same way: the
 token is verified on the machine, with no call home.

@@ -86,10 +86,24 @@ jobs:
         with:
           name: windows-executables
           path: out
+      - name: Choose the release notes
+        # Written notes if the release has them (`docs/releases/v0.1.2.md`), otherwise
+        # whatever GitHub can generate from the commits. The REST API cannot update a
+        # release by tag — only by id — so the notes have to be right the first time.
+        shell: bash
+        run: |
+          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then
+            echo "BODY_PATH=$notes" >> "$GITHUB_ENV"
+            echo "using $notes"
+          else
+            echo "no $notes — GitHub will generate the notes"
+          fi
       - name: Create the GitHub release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          body_path: ${{ env.BODY_PATH }}
           draft: false
           prerelease: false
           files: out/*.exe
