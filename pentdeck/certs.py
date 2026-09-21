@@ -162,13 +162,22 @@ def fetch(host: str, port: int, timeout: float = 8.0, sni: Optional[str] = None)
         reason = exc.verify_message or str(exc)
     except ssl.SSLError as exc:
         raise CertError(f"TLS handshake failed: {exc}") from exc
+    except OSError as exc:
+        # Anything that is not TLS: the service closed the connection mid-handshake, or
+        # there is nothing listening after all. Windows raises ConnectionAbortedError
+        # (WinError 10053) where Linux raises a reset or a clean EOF, so this has to be
+        # caught here rather than left to the caller: an unhandled OSError in the middle
+        # of a check is a scan that dies on one port.
+        raise CertError(f"no TLS handshake could be completed: {exc}") from exc
 
     lax = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     lax.check_hostname = False
     lax.verify_mode = ssl.CERT_NONE
     try:
         certificate = handshake(lax, False)
-    except (ssl.SSLError, OSError) as exc:
+    except (ssl.SSLError, OSError, ValueError) as exc:
+        # ValueError: an empty server hostname, which a caller can produce by scanning
+        # a bare address over a proxy. Either way, it is a certificate we could not read.
         raise CertError(f"{reason} (and the retry failed: {exc})") from exc
     certificate.error = reason
     return certificate

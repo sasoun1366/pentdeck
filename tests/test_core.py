@@ -13,6 +13,7 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from pentdeck import cli, findings, license as lic, purchase as pur, scope as sc  # noqa: E402
+from _helpers import assert_private                                          # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +95,7 @@ def test_scope_round_trip(tmp_path):
                      authorization=sc.Authorization(operator="S. S.", reference="contract 42"))
     path = scope.save(tmp_path)
     assert path.name == sc.SCOPE_FILENAME
-    assert oct(path.stat().st_mode)[-3:] == "600"
+    assert_private(path)
     loaded = sc.Scope.load(tmp_path)
     assert loaded.name == "acme"
     assert loaded.authorization.operator == "S. S."
@@ -135,7 +136,7 @@ def test_audit_log_appends_and_reads_back(tmp_path):
     tail = log.tail(10)
     assert [item["event"] for item in tail] == ["check", "scan-start"]   # newest first
     assert tail[0]["check"] == "ports"
-    assert oct(log.path.stat().st_mode)[-3:] == "600"
+    assert_private(log.path)
 
 
 def test_summarize_hosts_shortens_long_lists():
@@ -237,7 +238,7 @@ def test_install_and_current_license(tmp_path):
     assert lic.current_license(tmp_path, secret=SECRET).tier == "free"
     installed = lic.install_token(token, tmp_path, secret=SECRET)
     assert installed.customer == "Acme"
-    assert oct(lic.license_file(tmp_path).stat().st_mode)[-3:] == "600"
+    assert_private(lic.license_file(tmp_path))
     assert lic.current_license(tmp_path, secret=SECRET).tier == "pro"
 
 
@@ -254,7 +255,7 @@ def test_secret_handling(tmp_path, monkeypatch):
         lic.load_secret(tmp_path)
     assert lic.load_secret(tmp_path, required=False) == ""
     path = lic.save_secret("a-long-enough-secret-value", tmp_path)
-    assert oct(path.stat().st_mode)[-3:] == "600"
+    assert_private(path)
     assert lic.load_secret(tmp_path) == "a-long-enough-secret-value"
     with pytest.raises(lic.LicenseError):
         lic.save_secret("short", tmp_path)
@@ -358,7 +359,7 @@ def test_the_wallet_address_is_stored_once_and_read_back(tmp_path):
     path = pur.save_wallet(ADDRESS, tmp_path)
     assert path.name == "wallet"
     assert pur.load_wallet(tmp_path) == ADDRESS
-    assert (path.stat().st_mode & 0o777) == 0o600             # only the seller can read it
+    assert_private(path)                                      # only the seller can read it
     assert pur.looks_like_trc20(ADDRESS) is True
     assert pur.looks_like_trc20("TMEyd1JZqdCjjKTc4zG2fhjzAYFKXCUWn") is False   # one character short
     assert pur.looks_like_trc20("0xdeadbeef") is False
@@ -383,7 +384,7 @@ def test_the_contact_link_has_a_sensible_default(tmp_path):
     assert pur.load_telegram(tmp_path) == pur.DEFAULT_TELEGRAM
     pur.save_telegram("https://t.me/someone", tmp_path)
     assert pur.load_telegram(tmp_path) == "https://t.me/someone"
-    assert (pur.telegram_file(tmp_path).stat().st_mode & 0o777) == 0o600
+    assert_private(pur.telegram_file(tmp_path))
 
 
 def test_a_licence_request_shows_the_stored_address(tmp_path, capsys):

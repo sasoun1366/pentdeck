@@ -1,0 +1,78 @@
+pentdeck seller demo — the whole buying journey, offline. Nothing is sent anywhere; this order book is a temporary file.
+
+
+=== the buyer pastes the request the app wrote ===
+
+┌─ telegram → BUYER 555
+│ 🛒 pentdeck — order PD-DEMO
+│ 
+│ tier    : Pro ($99)
+│ amount  : 99 USDT (TRC20)
+│ wallet  : TDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD
+│ memo    : PD-DEMO
+│ 
+│ Pay exactly that amount, then reply here with the transaction id (txid) — a long hex string. The licence token comes back in this chat.
+│ 
+│ questions: https://t.me/luyavaai
+└─
+
+┌─ telegram → SELLER
+│ 🛒 order PD-DEMO
+│ PD-DEMO · pro $99 · new · Acme IT · <it@acme.test>
+└─
+   · new order PD-DEMO — pro from 555 (Acme IT)
+
+
+=== the buyer reports the transaction id ===
+
+┌─ telegram → BUYER 555
+│ Thanks — PD-DEMO is marked as paid. I am checking the transaction now; the licence arrives in this chat shortly.
+└─
+
+┌─ telegram → SELLER
+│ 💸 PD-DEMO claims payment
+│ PD-DEMO · pro $99 · claimed · Acme IT · <it@acme.test> · txid 0xababababababab…
+│ check the wallet, then: /confirm PD-DEMO 0xababababababababababab
+└─
+   · PD-DEMO marked claimed (txid 0xabababababababababababababababababababababababababababababababab)
+
+
+=== the seller looks at the inbox ===
+
+┌─ telegram → SELLER
+│ pending (1):
+│   PD-DEMO  pro   $99   claimed  Acme IT it@acme.test  txid 0xababababababababab
+│ 
+│ confirm one with: /confirm <code> [txid]
+└─
+
+
+=== the seller confirms the payment — this is the only step that issues anything ===
+
+┌─ telegram → BUYER 555
+│ ✅ your pentdeck licence
+│ 
+│ PD1.eyJjdXN0b21lciI6IkFjbWUgSVQiLCJleHBpcmVzIjoiMjAzNi0wOS0xOFQxMjo0MjozMi42MDExNjErMDA6MDAiLCJpc3N1ZWQiOiIyMDI2LTA5LTIxVDEyOjQyOjMyLjYwMTE2MSswMDowMCIsIm1hY2hpbmUiOiIiLCJub25jZSI6ImQ1NTUxNDM2Iiwib3JkZXIiOiJQRC1ERU1PIiwic2VhdHMiOjEsInRpZXIiOiJwcm8iLCJ2IjoxfQ.l5eHh0w5J9a4S5jDE-sy7G3Yqojll3AJ_-_LdKRXbpY
+│ 
+│ install it with: pentdeck license install PD1.eyJjdXN0b21lciI6IkFj…
+└─
+
+┌─ telegram → SELLER
+│ ✅ PD-DEMO delivered to the buyer's chat
+└─
+   · PD-DEMO: token issued (pro)
+   · PD-DEMO: delivered to 555
+
+
+=== the result ===
+token verifies : customer='Acme IT' tier='pro' order='PD-DEMO' expires=2036-09-18
+order status   : delivered
+order book     : /tmp/pentdeck-demo-s85ze63i/orders.json
+
+the buyer can now run:  pentdeck license install <the token above>
+
+To do this for real, on your own bot:
+  1. PENTDECK_BUY_BOT_TOKEN=<the bot buyers message>
+  2. pentdeck seller whoami          (message your bot once first)
+  3. PENTDECK_BUY_CHAT_ID=<your chat id from that list>
+  4. pentdeck seller run

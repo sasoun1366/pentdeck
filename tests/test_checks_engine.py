@@ -192,6 +192,29 @@ def test_banner_check_reads_the_greeting_and_flags_the_version():
                    for item in findings)
 
 
+def test_a_connection_the_server_aborts_is_a_cert_error_not_a_crash(monkeypatch):
+    """The Windows-only crash that a Linux CI run never sees.
+
+    A service that is not TLS closes the connection in the middle of the handshake. Linux
+    reports a reset or a clean EOF; Windows raises ConnectionAbortedError (WinError 10053).
+    Both have to leave `fetch` as a CertError, because the callers treat CertError as
+    "this port does not speak TLS" — an OSError escaping here is one port killing a scan.
+    """
+    import ssl
+
+    from pentdeck import certs
+
+    def aborted(*args, **kwargs):
+        raise ConnectionAbortedError(
+            10053, "An established connection was aborted by the software in your host machine"
+        )
+
+    monkeypatch.setattr(ssl.SSLContext, "wrap_socket", aborted)
+    with pytest.raises(certs.CertError) as caught:
+        certs.fetch("127.0.0.1", 80, timeout=0.5)
+    assert "no TLS handshake could be completed" in str(caught.value)
+
+
 def test_banner_check_is_silent_on_a_service_that_says_nothing():
     with BannerServer(b"") as server:
         ctx = context_for(port=server.port)

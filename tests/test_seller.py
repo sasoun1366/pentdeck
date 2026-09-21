@@ -24,6 +24,7 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from pentdeck import cli, license as lic, purchase as pur, seller as sel   # noqa: E402
+from _helpers import assert_private                                       # noqa: E402
 
 SECRET = "seller-bot-test-secret"
 WALLET = "TMEyd1JZqdCjjKTc4zG2fhjzAYFKXCUWnA"
@@ -109,7 +110,7 @@ def test_an_order_is_written_once_and_read_back(tmp_path):
     book.add(sel.Order(code="PD-AAAA", name="Acme", email="it@acme.test", tier="pro", chat_id="1"))
     book.offset = 42
     path = book.save()
-    assert (path.stat().st_mode & 0o777) == 0o600        # buyers' data is not world readable
+    assert_private(path)                                 # buyers' data is not world readable
     again = sel.OrderBook.load(tmp_path)
     assert again.offset == 42
     assert again.get("pd-aaaa") is not None              # lookup is case-insensitive
