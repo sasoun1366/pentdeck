@@ -1,0 +1,29 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Install the desktop extra (best effort)
+        # The dashboard tests skip themselves when PyQt6 is missing, so a Qt wheel that
+        # will not install on this runner must not fail the build — but when it does
+        # install, those 25 tests run like any other.
+        run: pip install "PyQt6>=6.6" || echo "PyQt6 unavailable — the dashboard tests will be skipped"
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest -q

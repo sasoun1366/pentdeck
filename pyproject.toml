@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pentdeck"
+version = "0.1.0"
+description = "A pentest workbench for authorised internal network assessments - scan, triage, and hand the client a report."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "sasoun1366" }]
+requires-python = ">=3.9"
+keywords = ["pentest", "security", "network", "audit", "scanner", "report", "cli", "sysadmin"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Telecommunications Industry",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: System :: Networking :: Monitoring",
+    "Topic :: Utilities",
+]
+dependencies = []
+
+[project.optional-dependencies]
+# The dashboard is the only thing here that wants a dependency, so it is the only
+# extra: the core tool stays installable on a bare Python.
+desktop = ["PyQt6>=6.6"]
+dev = ["pytest>=7.0"]
+
+[project.urls]
+Homepage = "https://github.com/sasoun1366/pentdeck"
+Issues = "https://github.com/sasoun1366/pentdeck/issues"
+
+[project.scripts]
+pentdeck = "pentdeck.cli:main"
+pentdeck-desktop = "pentdeck.desktop:main"
+
+[tool.setuptools]
+packages = ["pentdeck", "pentdeck.desktop"]
