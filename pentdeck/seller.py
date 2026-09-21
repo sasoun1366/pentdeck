@@ -490,6 +490,31 @@ def _issue(order: Order, book: OrderBook, actions: Actions, stamp: str) -> Tuple
     return True, token
 
 
+def recent_chats(token: str, limit: int = 20) -> List[Dict[str, str]]:
+    """Who has messaged the bot lately — so the seller can find their own chat id.
+
+    Reading with offset 0 does not confirm anything: the bot's own offset is untouched,
+    so this is safe to run on a live bot. A chat that has never written to the bot cannot
+    be listed — Telegram does not allow it, and that is why the setup says "message your
+    bot once, then run this".
+    """
+    ok, messages, _ = collect_updates(token, 0, timeout=0, limit=limit)
+    if not ok:
+        return []
+    seen: Dict[str, Dict[str, str]] = {}
+    for message in messages:
+        chat_id = str(message.get("chat_id", ""))
+        if not chat_id:
+            continue
+        seen[chat_id] = {
+            "chat_id": chat_id,
+            "name": str(message.get("from_name", "")),
+            "username": str(message.get("username", "")),
+            "text": str(message.get("text", ""))[:40],
+        }
+    return list(seen.values())
+
+
 # ---------------------------------------------------------------------------
 # the loop
 # ---------------------------------------------------------------------------

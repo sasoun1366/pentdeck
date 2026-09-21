@@ -24,6 +24,7 @@ from ..license import TIERS, License, current_license, install_token, machine_id
 from ..purchase import (build_request_text, load_telegram, load_wallet, order_code,
                         save_wallet, send_order)
 from ..scope import AuditLog, Authorization, Scope, ScopeError
+from ..seller import Order
 from .theme import ACCENT, GOOD, SEVERITY_COLOUR, TEXT_DIM, WARN
 from .widgets import (banner, button, card, cell, copy_button, fill_table, hint, log_box,
                       make_table, mono, page_title, pill, row, scrollable, set_pill,
@@ -35,6 +36,7 @@ PAGES = [
     ("scan", "Scan"),
     ("findings", "Findings"),
     ("reports", "Reports"),
+    ("orders", "Orders"),
     ("tools", "Tools & checks"),
     ("license", "Licence"),
 ]
@@ -556,6 +558,226 @@ class TargetsView(QWidget):
         AuditLog(self.home).append("authorization", operator=authorization.operator,
                                    reference=authorization.reference)
         self._say("recorded: " + authorization.summary())
+        self.changed.emit()
+
+
+# ---------------------------------------------------------------------------
+# Orders — the seller's side
+# ---------------------------------------------------------------------------
+STATUS_COLOUR = {
+    "new": WARN,
+    "claimed": ACCENT,
+    "delivered": GOOD,
+    "cancelled": TEXT_DIM,
+}
+
+
+class OrdersView(QWidget):
+    """Orders from the bot, and the one confirmation that releases a licence.
+
+    This is the same path `pentdeck seller confirm` uses — it calls
+    `seller.confirm_by_hand`, which calls the same issuing code the bot calls. The window
+    does not get its own idea of when a licence may be issued.
+    """
+
+    changed = pyqtSignal()
+
+    def __init__(self, home: pathlib.Path, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.home = pathlib.Path(home)
+        self.book = None
+        self._build()
+        self.refresh()
+
+    def _build(self) -> None:
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(20, 16, 20, 16)
+        outer.setSpacing(10)
+        outer.addWidget(page_title(
+            "Orders",
+            "Buyers send the request the app writes; the bot answers them and records the "
+            "order here. Nothing is issued until a payment is confirmed — that is the "
+            "whole design.",
+        ))
+
+        self.state = banner("")
+        outer.addWidget(self.state)
+
+        bar = QWidget()
+        bar_layout = QHBoxLayout(bar)
+        bar_layout.setContentsMargins(0, 0, 0, 0)
+        self.refresh_button = button("Refresh")
+        self.refresh_button.clicked.connect(self.refresh)
+        bar_layout.addWidget(self.refresh_button)
+        self.confirm_button = button("Confirm the payment and deliver", primary=True)
+        self.confirm_button.clicked.connect(self._confirm)
+        bar_layout.addWidget(self.confirm_button)
+        self.cancel_button = button("Cancel the order")
+        self.cancel_button.setObjectName("Danger")
+        self.cancel_button.clicked.connect(self._cancel)
+        bar_layout.addWidget(self.cancel_button)
+        bar_layout.addStretch(1)
+        self.stats_label = QLabel("")
+        self.stats_label.setObjectName("Hint")
+        bar_layout.addWidget(self.stats_label)
+        outer.addWidget(bar)
+
+        self.table = make_table(
+            ["Order", "Tier", "Amount", "Status", "Customer", "Transaction", "Created"],
+            stretch_column=4,
+        )
+        self.table.itemSelectionChanged.connect(self._show_detail)
+        outer.addWidget(self.table, 2)
+
+        detail_card, detail_body = card("The selected order")
+        self.detail = QPlainTextEdit()
+        self.detail.setReadOnly(True)
+        self.detail.setStyleSheet(
+            "background: #161b22; border: 1px solid #263041; border-radius: 8px; padding: 6px;"
+        )
+        self.detail.setMaximumHeight(190)
+        detail_body.addWidget(self.detail)
+        row_widget = row(copy_button(lambda: self.detail.toPlainText(), "all of it"),
+                         copy_button(self._token_of_selected, "the token"))
+        detail_body.addWidget(row_widget)
+        outer.addWidget(detail_card, 1)
+        outer.addWidget(hint(
+            "Orders live in ~/.pentdeck/orders.json (mode 0600). Run `pentdeck seller run` "
+            "to answer buyers automatically, or `pentdeck seller whoami` to find your own "
+            "chat id for the setup."
+        ))
+
+    # ── data ─────────────────────────────────────────────────────────────────
+    def refresh(self) -> None:
+        from ..seller import OrderBook
+        from .widgets import clear_table
+
+        self.book = OrderBook.load(self.home)
+        orders = sorted(self.book.orders, key=lambda order: (order.status == "delivered",
+                                                             order.status == "cancelled",
+                                                             order.created))
+        clear_table(self.table)
+        for order in orders:
+            position = self.table.rowCount()
+            self.table.insertRow(position)
+            values = [
+                cell(order.code, mono_font=True, bold=True),
+                cell(order.label),
+                cell(f"${order.price}"),
+                cell(order.status.upper(), STATUS_COLOUR.get(order.status, TEXT_DIM), bold=True),
+                cell(f"{order.name} {order.email}".strip(),
+                     tooltip=order.note or order.email),
+                cell((order.txid[:20] + "…") if len(order.txid) > 20 else order.txid, mono_font=True),
+                cell(order.created[:16].replace("T", " "), TEXT_DIM),
+            ]
+            for column, item in enumerate(values):
+                self.table.setItem(position, column, item)
+
+        stats = self.book.stats()
+        self.stats_label.setText(
+            f"{stats['delivered']} delivered · {stats['pending']} pending · "
+            f"${stats['revenue_usd']} collected"
+        )
+        if not self.book.orders:
+            self.state.setText(
+                "No orders yet. A buyer creates one from the app (Licence page → Create the "
+                "order), or by running `pentdeck license request`. Then this list fills in."
+            )
+        else:
+            pending = self.book.pending()
+            self.state.setText(
+                f"{len(pending)} order(s) waiting for a confirmation." if pending
+                else "Nothing is waiting — every order here is delivered or cancelled."
+            )
+            self.state.setStyleSheet(
+                f"background: transparent; border-left: 3px solid "
+                f"{WARN if pending else GOOD}; padding: 9px 12px;"
+            )
+        if self.table.rowCount():
+            self.table.selectRow(0)
+        else:
+            self.detail.setPlainText("")
+        self._update_buttons()
+
+    def _selected_order(self):
+        from .widgets import selected_row
+
+        index = selected_row(self.table)
+        if self.book is None or index < 0:
+            return None
+        # the table is sorted, so read the code back rather than guessing an index
+        item = self.table.item(index, 0)
+        return self.book.get(item.text()) if item else None
+
+    def _token_of_selected(self) -> str:
+        order = self._selected_order()
+        return order.token if order else ""
+
+    def _show_detail(self) -> None:
+        order = self._selected_order()
+        if order is None:
+            return
+        lines = [
+            f"order     : {order.code}",
+            f"tier      : {order.label} (${order.price})",
+            f"status    : {order.status}",
+            f"customer  : {order.name} <{order.email}>" if order.email else f"customer  : {order.name}",
+            f"chat      : {order.chat_id or '(none — deliver by hand)'}",
+            f"created   : {order.created}",
+            f"txid      : {order.txid or '(not reported yet)'}",
+            f"machine   : {order.machine or '(unbound)'}",
+        ]
+        if order.note:
+            lines.append(f"note      : {order.note}")
+        if order.token:
+            lines += ["", "issued token", "─" * 12, order.token]
+        self.detail.setPlainText("\n".join(lines))
+        self._update_buttons()
+
+    def _update_buttons(self) -> None:
+        order = self._selected_order()
+        self.confirm_button.setEnabled(order is not None and order.status != "cancelled")
+        self.cancel_button.setEnabled(order is not None and order.status not in ("delivered",
+                                                                                "cancelled"))
+
+    # ── actions ──────────────────────────────────────────────────────────────
+    def _confirm(self) -> None:
+        order = self._selected_order()
+        if order is None:
+            return
+        self._run_confirm(order)
+
+    def _run_confirm(self, order) -> None:
+        """Issue through the same function the bot and the CLI use."""
+        from ..seller import confirm_by_hand
+
+        ok, message = confirm_by_hand(order.code, self.home, txid=order.txid,
+                                      machine=order.machine, send=bool(order.chat_id))
+        self.refresh()
+        if ok:
+            note = ("the token is in the buyer's chat" if order.chat_id
+                    else "no chat on file — the token is below, send it by hand")
+            self.state.setText(f"{order.code} issued — {note}.")
+            self.state.setStyleSheet(f"background: transparent; border-left: 3px solid {GOOD};"
+                                     f" padding: 9px 12px;")
+        else:
+            self.state.setText(f"{order.code}: {message.splitlines()[0]}")
+            self.state.setStyleSheet(
+                f"background: transparent; border-left: 3px solid "
+                f"{SEVERITY_COLOUR['critical']}; padding: 9px 12px;"
+            )
+        self.detail.setPlainText(message)
+        self.changed.emit()
+
+    def _cancel(self) -> None:
+        order = self._selected_order()
+        if order is None or self.book is None:
+            return
+        order.status = "cancelled"
+        self.book.save()
+        self.refresh()
+        self.state.setText(f"{order.code} cancelled. `/issue` on the bot can still send it "
+                           f"if the payment turns up after all.")
         self.changed.emit()
 
 

@@ -64,11 +64,14 @@ pentdeck gui                    # or: pentdeck-desktop
 
 ![the overview](docs/dashboard.png)
 
-Seven pages: **Overview** (what is declared, what was found), **Targets** (the scope, the
+Eight pages: **Overview** (what is declared, what was found), **Targets** (the scope, the
 never-touch list, the authorization form, the audit trail), **Scan** (checks, port
 profiles, timing, and a live log), **Findings** (filter, read the evidence, copy the fix),
-**Reports** (text / Markdown / HTML / JSON), **Tools & checks** (what this licence may
-run) and **Licence** (status, install a token, create an order).
+**Reports** (text / Markdown / HTML / JSON), **Orders** (the seller's side, see below),
+**Tools & checks** (what this licence may run) and **Licence** (status, install a token,
+create an order).
+
+![orders](docs/orders.png)
 
 ![findings](docs/findings.png)
 
@@ -124,6 +127,22 @@ ten seconds — and then one message finishes the sale:
 /issue PD-7K3Q         re-issue (a lost token, a second machine)
 /cancel PD-7K3Q        close it
 /stats                 orders and money collected
+```
+
+The same thing with buttons: the **Orders** page in the dashboard lists what the bot
+recorded, shows the transaction id and the buyer, and the *Confirm the payment and deliver*
+button runs the identical code path — the window does not get its own idea of when a
+licence may be issued.
+
+Setting it up once:
+
+```bash
+pentdeck license wallet T…            # the address buyers pay to
+export PENTDECK_BUY_BOT_TOKEN=…       # the bot buyers message (BotFather)
+pentdeck seller whoami                # message your bot once, then run this:
+                                      # it lists the chats that wrote to it, so you can
+                                      # copy your own id into PENTDECK_BUY_CHAT_ID
+pentdeck seller run                   # leave it running
 ```
 
 Only your own chat may run those; a buyer can create an order, report a payment and ask

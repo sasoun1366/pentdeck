@@ -17,7 +17,8 @@ from ..license import TIERS, current_license
 from ..scope import Scope, ScopeError, require_authorization
 from .theme import GOOD, SEVERITY_COLOUR, TEXT_DIM, WARN
 from .widgets import pill, set_pill
-from .views import (PAGES, DashboardView, LicenseView, TargetsView, ToolsView, load_scope)
+from .views import (PAGES, DashboardView, LicenseView, OrdersView, TargetsView, ToolsView,
+                    load_scope)
 from .scan_view import FindingsView, ReportsView, ScanView
 from .safety import safe_slot
 from .workers import ScanWorker
@@ -58,10 +59,11 @@ class MainWindow(QMainWindow):
         self.scan = ScanView(self._home)
         self.findings = FindingsView()
         self.reports = ReportsView(self._home)
+        self.orders = OrdersView(self._home)
         self.tools = ToolsView(self._home)
         self.license = LicenseView(self._home)
         for widget in (self.dashboard, self.targets, self.scan, self.findings,
-                       self.reports, self.tools, self.license):
+                       self.reports, self.orders, self.tools, self.license):
             self.stack.addWidget(widget)
         right_layout.addWidget(self.stack, 1)
         layout.addWidget(right, 1)
@@ -144,6 +146,7 @@ class MainWindow(QMainWindow):
         self.dashboard.navigate.connect(self._show)
         self.targets.changed.connect(self.refresh_all)
         self.license.changed.connect(self.refresh_all)
+        self.orders.changed.connect(self.refresh_all)
         self.scan.start_requested.connect(self.start_scan)
         self.scan.stop_requested.connect(self.stop_scan)
         self.scan.show_findings.connect(lambda: self._show("findings"))

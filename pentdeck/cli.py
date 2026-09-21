@@ -189,6 +189,10 @@ def build_parser() -> argparse.ArgumentParser:
     seller_show = seller_sub.add_parser("show", help="everything about one order")
     seller_show.add_argument("code")
     seller_sub.add_parser("stats", help="orders, deliveries and money")
+    seller_sub.add_parser(
+        "whoami",
+        help="list the chats that have written to the bot, so you can copy your own id",
+    )
 
     # ── desktop ──────────────────────────────────────────────────────────────
     gui = sub.add_parser("gui", help="open the desktop dashboard (needs PyQt6)")
@@ -535,6 +539,28 @@ def cmd_seller(args: argparse.Namespace, home: pathlib.Path) -> int:
             print(f"no order {args.code.upper()}", file=sys.stderr)
             return 1
         print(json.dumps(order.as_dict(), indent=2, ensure_ascii=False))
+        return 0
+
+    if script == "whoami":
+        from .seller import recent_chats, seller_ids
+
+        token = os.environ.get("PENTDECK_BUY_BOT_TOKEN", "")
+        if not token:
+            print("set PENTDECK_BUY_BOT_TOKEN first — the bot the buyers message", file=sys.stderr)
+            return 2
+        chats = recent_chats(token)
+        if not chats:
+            print("no recent messages. Open Telegram, send your bot any message "
+                  "(for example /start), then run this again.", file=sys.stderr)
+            return 1
+        known = set(seller_ids())
+        print(f"{'chat id':<16} {'you?':<5} name / username")
+        for chat in chats:
+            mark = "yes" if chat["chat_id"] in known else ""
+            who = chat["name"] + (f" @{chat['username']}" if chat["username"] else "")
+            print(f"{chat['chat_id']:<16} {mark:<5} {who}")
+        print("\nthe id marked 'yes' is the one already configured. To use another:\n"
+              "  PENTDECK_BUY_CHAT_ID=<id>  (Windows: setx PENTDECK_BUY_CHAT_ID <id>)")
         return 0
 
     if script == "stats":
