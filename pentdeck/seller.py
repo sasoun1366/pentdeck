@@ -28,11 +28,12 @@ import json
 import os
 import pathlib
 import re
+import secrets
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from .license import LicenseError, TIERS, issue_token
-from .purchase import (collect_updates, load_telegram, load_wallet, order_code,
-                       parse_order_message, send_license, send_order)
+from .purchase import (build_request_text, collect_updates, load_telegram, load_wallet,
+                       order_code, parse_order_message, send_license, send_order)
 
 ORDER_FILENAME = "orders.json"
 
@@ -581,6 +582,113 @@ def serve(token: str, home: Optional[pathlib.Path] = None, *, wallet: str = "",
             return 0
         if once or (should_stop is not None and should_stop()):
             return 0
+
+
+# ---------------------------------------------------------------------------
+# the demo: the whole flow, on this machine, with nothing wired up
+# ---------------------------------------------------------------------------
+def run_demo(home: Optional[pathlib.Path] = None, *, out: Callable[[str], None] = print,
+             keep: bool = False) -> int:
+    """Walk the whole buying journey in front of the seller, offline.
+
+    This is what `pentdeck seller demo` runs. It needs no bot token, no chat id and no
+    money: the inbox is three dicts and the two functions that would talk to Telegram are
+    replaced by ones that print. Nothing is sent anywhere, and the order book is written
+    to a temporary directory that is removed afterwards unless ``keep`` is set.
+
+    A seller who has seen this has seen exactly what a buyer will see.
+    """
+    import shutil
+    import tempfile
+
+    from .license import LicenseError, decode_token, load_secret, save_secret
+
+    # A demo must not write into the seller's real state directory unless asked to.
+    temporary = home is None
+    home = pathlib.Path(home) if not temporary else pathlib.Path(tempfile.mkdtemp(prefix="pentdeck-demo-"))
+    home.mkdir(parents=True, exist_ok=True)
+
+    secret = os.environ.get("PENTDECK_LICENSE_SECRET", "")
+    if not secret:
+        existing = load_secret(home, required=False) if (home / "secret").exists() else ""
+        if existing:
+            secret = existing
+        elif home == pathlib.Path(os.environ.get("PENTDECK_HOME", "")) and (home / "secret").exists():
+            secret = load_secret(home, required=False)
+        else:
+            secret = secrets.token_hex(16)
+            save_secret(secret, home)
+
+    wallet = load_wallet(home) or "T" + "D" * 33          # a placeholder address, clearly fake
+    book = OrderBook(home)
+    book.offset = 0
+    book.orders.clear()
+
+    seen: List[str] = []
+
+    def post(chat_id: str, text: str) -> Tuple[bool, str]:
+        who = "SELLER" if str(chat_id) in set(seller_ids() or ["999"]) else f"BUYER {chat_id}"
+        seen.append(text)
+        out(f"\n┌─ telegram → {who}\n" + "\n".join(f"│ {line}" for line in text.splitlines())
+            + "\n└─")
+        return True, "message_id=1"
+
+    def hand_over(chat_id: str, token: str) -> Tuple[bool, str]:
+        return post(chat_id, f"✅ your pentdeck licence\n\n{token}\n\n"
+                             f"install it with: pentdeck license install {token[:24]}…")
+
+    out("pentdeck seller demo — the whole buying journey, offline. "
+        "Nothing is sent anywhere; this order book is a temporary file.")
+
+    request = build_request_text(name="Acme IT", email="it@acme.test", tier="pro",
+                                 order="PD-DEMO", note="server room, after hours",
+                                 wallet=wallet, telegram=load_telegram(home))
+    steps = [
+        ("the buyer pastes the request the app wrote",
+         {"update_id": 1, "chat_id": "555", "username": "buyer", "text": request}),
+        ("the buyer reports the transaction id",
+         {"update_id": 2, "chat_id": "555", "username": "buyer", "text": "0x" + "ab" * 32}),
+        ("the seller looks at the inbox",
+         {"update_id": 3, "chat_id": "999", "username": "seller", "text": "/orders"}),
+        ("the seller confirms the payment — this is the only step that issues anything",
+         {"update_id": 4, "chat_id": "999", "username": "seller", "text": "/confirm PD-DEMO"}),
+    ]
+
+    for label, message in steps:
+        out(f"\n\n=== {label} ===")
+        actions = handle_message(message, book, wallet=wallet, telegram=load_telegram(home),
+                                 allowed=["999"], sender=post, deliver=hand_over)
+        for target, text in actions.sent:
+            post(target, text)
+        for note in actions.notes:
+            out(f"   · {note}")
+
+    book.save()                                            # so `pentdeck seller orders` can see it
+    order = book.get("PD-DEMO")
+    out("\n\n=== the result ===")
+    if order is None or not order.token:
+        out("something went wrong: no token was issued")
+        return 1
+    try:
+        verified = decode_token(order.token, secret)
+        out(f"token verifies : customer={verified.customer!r} tier={verified.tier!r} "
+            f"order={verified.order!r} expires={verified.expires[:10]}")
+    except LicenseError as exc:                            # pragma: no cover - would be a bug
+        out(f"the token did NOT verify: {exc}")
+        return 1
+    out(f"order status   : {order.status}")
+    out(f"order book     : {book.path}")
+    out("\nthe buyer can now run:  pentdeck license install <the token above>\n"
+        "\nTo do this for real, on your own bot:\n"
+        "  1. PENTDECK_BUY_BOT_TOKEN=<the bot buyers message>\n"
+        "  2. pentdeck seller whoami          (message your bot once first)\n"
+        "  3. PENTDECK_BUY_CHAT_ID=<your chat id from that list>\n"
+        "  4. pentdeck seller run")
+    if temporary and not keep:
+        shutil.rmtree(home, ignore_errors=True)
+    else:
+        out(f"\nthis order book was kept at {home} — `pentdeck seller orders` will list it")
+    return 0
 
 
 # ---------------------------------------------------------------------------

@@ -134,6 +134,34 @@ recorded, shows the transaction id and the buyer, and the *Confirm the payment a
 button runs the identical code path — the window does not get its own idea of when a
 licence may be issued.
 
+Not sure yet? One command runs the whole journey on your machine — no bot, no token, no
+money, nothing sent anywhere:
+
+```console
+$ pentdeck seller demo
+
+=== the buyer pastes the request the app wrote ===
+┌─ telegram → BUYER 555
+│ 🛒 pentdeck — order PD-DEMO
+│ amount  : 99 USDT (TRC20)
+│ wallet  : T…
+│ memo    : PD-DEMO
+└─
+┌─ telegram → SELLER
+│ 🛒 order PD-DEMO
+│ PD-DEMO · pro $99 · new · Acme IT · <it@acme.test>
+└─
+
+=== the seller confirms the payment — this is the only step that issues anything ===
+┌─ telegram → BUYER 555
+│ ✅ your pentdeck licence
+│ PD1.eyJjdXN0b21lciI6IkFjbWUgSVQi…
+└─
+
+=== the result ===
+token verifies : customer='Acme IT' tier='pro' order='PD-DEMO' expires=2036-09-18
+```
+
 Setting it up once:
 
 ```bash

@@ -189,6 +189,8 @@ def build_parser() -> argparse.ArgumentParser:
     seller_show = seller_sub.add_parser("show", help="everything about one order")
     seller_show.add_argument("code")
     seller_sub.add_parser("stats", help="orders, deliveries and money")
+    seller_sub.add_parser("demo", help="run the whole buying journey offline, on this "
+                                       "machine, with no bot and no money")
     seller_sub.add_parser(
         "whoami",
         help="list the chats that have written to the bot, so you can copy your own id",
@@ -540,6 +542,11 @@ def cmd_seller(args: argparse.Namespace, home: pathlib.Path) -> int:
             return 1
         print(json.dumps(order.as_dict(), indent=2, ensure_ascii=False))
         return 0
+
+    if script == "demo":
+        from .seller import run_demo
+
+        return run_demo()
 
     if script == "whoami":
         from .seller import recent_chats, seller_ids

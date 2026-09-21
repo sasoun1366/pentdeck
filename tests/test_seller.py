@@ -530,6 +530,45 @@ def test_confirm_by_hand_can_deliver_too(home):
 
 
 # ---------------------------------------------------------------------------
+# the demo — the thing that proves it works before any bot exists
+# ---------------------------------------------------------------------------
+def test_the_demo_runs_the_whole_journey_with_nothing_configured(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("PENTDECK_BUY_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("PENTDECK_BUY_CHAT_ID", raising=False)
+    monkeypatch.delenv("PENTDECK_WALLET", raising=False)
+    monkeypatch.delenv("PENTDECK_LICENSE_SECRET", raising=False)
+    monkeypatch.setenv("PENTDECK_HOME", str(tmp_path / "untouched"))
+
+    lines = []
+    code = sel.run_demo(out=lines.append)
+    printed = "\n".join(lines)
+    assert code == 0
+    assert "99 USDT (TRC20)" in printed                      # the buyer got the amount
+    assert "order PD-DEMO" in printed                        # the seller was told
+    assert "token verifies" in printed
+    assert "customer='Acme IT'" in printed and "tier='pro'" in printed
+    assert "pentdeck seller whoami" in printed               # and how to do it for real
+    assert not (tmp_path / "untouched").exists()             # a demo does not touch real state
+
+
+def test_the_demo_uses_the_real_wallet_when_one_is_configured(tmp_path, capsys):
+    pur.save_wallet(WALLET, tmp_path)
+    lines = []
+    assert sel.run_demo(tmp_path, out=lines.append, keep=True) == 0
+    printed = "\n".join(lines)
+    assert WALLET in printed
+    assert (tmp_path / sel.ORDER_FILENAME).exists()          # kept, because keep=True
+    assert json.loads((tmp_path / sel.ORDER_FILENAME).read_text())["orders"][0]["status"] == "delivered"
+
+
+def test_the_demo_is_reachable_from_the_cli(tmp_path, capsys):
+    lines = []
+    assert cli.main(["--home", str(tmp_path), "seller", "demo"]) == 0
+    out = capsys.readouterr().out
+    assert "the whole buying journey" in out and "token verifies" in out
+
+
+# ---------------------------------------------------------------------------
 # the command line around it
 # ---------------------------------------------------------------------------
 def test_the_seller_commands_work_from_the_cli(home, capsys):
