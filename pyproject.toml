@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pentdeck"
-version = "0.1.0"
+version = "0.1.1"
 description = "A pentest workbench for authorised internal network assessments - scan, triage, and hand the client a report."
 readme = "README.md"
 license = { text = "MIT" }
@@ -35,6 +35,8 @@ dependencies = []
 # extra: the core tool stays installable on a bare Python.
 desktop = ["PyQt6>=6.6"]
 dev = ["pytest>=7.0"]
+# Building the Windows executables (CI does this on a tag; see .github/workflows).
+packaging = ["pyinstaller>=6.0"]
 
 [project.urls]
 Homepage = "https://github.com/sasoun1366/pentdeck"

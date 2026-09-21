@@ -170,6 +170,26 @@ def build_parser() -> argparse.ArgumentParser:
                             help="also store the contact link buyers should use")
     sub.add_parser("machine", help="print this machine's id, for a bound licence")
 
+    # ── seller ───────────────────────────────────────────────────────────────
+    seller = sub.add_parser("seller", help="run the order bot, or drive orders by hand")
+    seller_sub = seller.add_subparsers(dest="seller_command")
+    seller_run = seller_sub.add_parser("run", help="long-poll the bot and answer buyers")
+    seller_run.add_argument("--once", action="store_true", help="one pass, then exit")
+    seller_run.add_argument("--poll-timeout", type=int, default=25,
+                            help="seconds Telegram may hold the connection open")
+    seller_orders = seller_sub.add_parser("orders", help="list orders")
+    seller_orders.add_argument("--all", action="store_true", help="include delivered and cancelled")
+    seller_confirm = seller_sub.add_parser("confirm", help="the payment arrived: issue and deliver")
+    seller_confirm.add_argument("code")
+    seller_confirm.add_argument("--txid", default="")
+    seller_confirm.add_argument("--machine", default="", help="bind the licence to a machine id")
+    seller_confirm.add_argument("--send", action="store_true",
+                                help="deliver it to the buyer's chat (needs the bot token)")
+    seller_confirm.add_argument("--days", type=int, default=3650)
+    seller_show = seller_sub.add_parser("show", help="everything about one order")
+    seller_show.add_argument("code")
+    seller_sub.add_parser("stats", help="orders, deliveries and money")
+
     # ── desktop ──────────────────────────────────────────────────────────────
     gui = sub.add_parser("gui", help="open the desktop dashboard (needs PyQt6)")
     gui.add_argument("--scan", action="store_true",
@@ -469,6 +489,78 @@ def cmd_license(args: argparse.Namespace, home: pathlib.Path) -> int:
     return 0
 
 
+def cmd_seller(args: argparse.Namespace, home: pathlib.Path) -> int:
+    from .purchase import load_telegram, load_wallet
+    from .seller import (OrderBook, confirm_by_hand, serve, seller_ids)
+
+    script = args.seller_command or "orders"
+    book = OrderBook.load(home)
+
+    if script == "run":
+        from .purchase import load_telegram as _tg, load_wallet as _w
+
+        token = os.environ.get("PENTDECK_BUY_BOT_TOKEN", "")
+        if not token:
+            print("set PENTDECK_BUY_BOT_TOKEN first — the bot the buyers message", file=sys.stderr)
+            return 2
+        if not seller_ids():
+            print("set PENTDECK_BUY_CHAT_ID to your own chat id, or nobody can confirm an "
+                  "order (and every buyer would be treated as the seller)", file=sys.stderr)
+            return 2
+        if not _w(home):
+            print("note: no wallet address stored — buyers will be told the seller will send "
+                  "it. Run `pentdeck license wallet <address>`.", file=sys.stderr)
+        try:
+            return serve(token, home, wallet=_w(home), telegram=_tg(home),
+                         poll_timeout=args.poll_timeout, once=args.once)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
+    if script == "orders":
+        shown = book.orders if args.all else book.pending()
+        if not shown:
+            print("nothing pending" if not args.all else "no orders yet")
+            return 0
+        width = max(len(order.code) for order in shown)
+        for order in shown:
+            print(f"{order.code:<{width}}  {order.tier:<5} ${order.price:<4} "
+                  f"{order.status:<9} {order.created[:19]}  {order.name} {order.email}"
+                  + (f"  txid {order.txid[:24]}" if order.txid else ""))
+        return 0
+
+    if script == "show":
+        order = book.get(args.code)
+        if order is None:
+            print(f"no order {args.code.upper()}", file=sys.stderr)
+            return 1
+        print(json.dumps(order.as_dict(), indent=2, ensure_ascii=False))
+        return 0
+
+    if script == "stats":
+        stats = book.stats()
+        print(f"orders    : {stats['orders']}")
+        print(f"pending   : {stats['pending']}")
+        print(f"delivered : {stats['delivered']}")
+        print(f"cancelled : {stats['cancelled']}")
+        print(f"collected : ${stats['revenue_usd']} (delivered orders only)")
+        return 0
+
+    if script == "confirm":
+        ok, message = confirm_by_hand(args.code, home, txid=args.txid, machine=args.machine,
+                                      send=args.send)
+        print(message)
+        if not ok:
+            print("(nothing arrived from the buyer? the token above is issued but not "
+                  "delivered — send it by hand, or fix the chat id and try again)",
+                  file=sys.stderr)
+            return 1
+        return 0
+
+    print("usage: pentdeck seller {run|orders|show|confirm|stats}", file=sys.stderr)
+    return 2
+
+
 def cmd_machine(args: argparse.Namespace, home: pathlib.Path) -> int:
     from .license import machine_id
 
@@ -500,6 +592,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return cmd_license(args, home)
         if command == "machine":
             return cmd_machine(args, home)
+        if command == "seller":
+            return cmd_seller(args, home)
         if command == "gui":
             try:
                 from .desktop.app import run_gui

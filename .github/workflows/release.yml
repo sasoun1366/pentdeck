@@ -9,16 +9,90 @@ permissions:
   contents: write
 
 jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[packaging,dev,desktop]"
+      - name: Run the test suite before shipping anything
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q
+      - name: Build the command line
+        run: pyinstaller packaging/pentdeck-cli.spec
+      - name: Build the dashboard
+        run: pyinstaller packaging/pentdeck-gui.spec
+      - name: Rename the artifacts with the version
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p out
+          cp dist/pentdeck.exe "out/pentdeck-${version}-windows-cli.exe"
+          cp dist/pentdeck-gui.exe "out/pentdeck-${version}-windows-desktop.exe"
+      - name: Smoke-test the frozen command line
+        shell: bash
+        run: |
+          ./out/pentdeck-*-windows-cli.exe --version
+          ./out/pentdeck-*-windows-cli.exe license status
+          ./out/pentdeck-*-windows-cli.exe seller stats
+      - name: Smoke-test the frozen dashboard
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PENTDECK_HOME: ${{ runner.temp }}\pentdeck-smoke
+        run: |
+          # Start-Process gives this GUI-subsystem executable **no console**, which is
+          # exactly what a customer double-clicking the download gets. Launching it from
+          # a shell is not the same test: the shell hands over its console, sys.stderr
+          # stops being None, and a build that dies before its window appears looks
+          # perfectly healthy. netpilot shipped a crash-before-the-window bug once
+          # because of that, so the test runs the way the user runs it.
+          $exe = Get-ChildItem out/pentdeck-*-windows-desktop.exe | Select-Object -First 1
+          Write-Host "launching $($exe.Name)"
+          $proc = Start-Process -FilePath $exe.FullName -PassThru
+          if (-not $proc.WaitForExit(45000)) { Stop-Process -Id $proc.Id -Force }
+
+          $dir = $env:PENTDECK_HOME
+          foreach ($name in 'pentdeck-desktop.log', 'pentdeck-fatal.log', 'pentdeck-crash.log') {
+            $file = Join-Path $dir $name
+            if (Test-Path $file) { Write-Host "--- $name ---"; Get-Content $file }
+          }
+
+          $log = Join-Path $dir 'pentdeck-desktop.log'
+          if ((Test-Path $log) -and ((Get-Content $log -Raw) -match 'window shown')) {
+            Write-Host 'the dashboard built its window and wrote its log'
+          } else {
+            Write-Error 'the dashboard never reached "window shown" — nothing was released'
+          }
+      - name: Upload the executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-executables
+          path: out/*.exe
+
   release:
+    needs: build-windows
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Create GitHub release
+      - name: Download the Windows executables
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-executables
+          path: out
+      - name: Create the GitHub release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           draft: false
           prerelease: false
+          files: out/*.exe
       - name: Announce on Telegram
         # A release created by a workflow with GITHUB_TOKEN does not trigger other
         # workflows (GitHub's anti-recursion rule), so the announcement cannot rely on

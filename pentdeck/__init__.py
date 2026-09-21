@@ -9,8 +9,10 @@ Modules:
     engine.py     the scan engine
     report.py     text, JSON, Markdown and HTML reports
     purchase.py   licence requests and delivery over a Telegram bot
+    seller.py     the seller's side: the order book and the order bot
     cli.py        the command line
+    desktop/      the PyQt6 dashboard (optional extra)
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = ["__version__"]

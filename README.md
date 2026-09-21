@@ -79,6 +79,57 @@ and the refusal itself is written to the audit log.
 
 ![the scan page](docs/scan.png)
 
+## Windows, without Python
+
+Every release carries two executables built on a Windows runner and smoke-tested the way
+you would run them — the dashboard is launched with `Start-Process`, which is what a
+double-click does, because a windowed build has no console and that is exactly where a
+startup bug hides:
+
+| download | what it is |
+| --- | --- |
+| `pentdeck-<version>-windows-desktop.exe` | the dashboard: double-click and it opens. State in `%USERPROFILE%\.pentdeck` |
+| `pentdeck-<version>-windows-cli.exe` | the same tool on the command line, for scripted runs and CI |
+
+Both are one file, no installer, no Python required. Licences work the same way: the
+token is verified on the machine, with no call home.
+
+## Selling it
+
+Two commands on your machine turn a request into a paid licence.
+
+```bash
+pentdeck license wallet T…                    # the address buyers pay to, stored once
+pentdeck seller run                           # the order bot (see below)
+```
+
+The dashboard's **Licence** page lets a buyer create an order and hand you a message; a
+buyer who has the CLI does the same with `pentdeck license request`. Either way the bot
+answers them with the wallet address, the exact amount and an order code, and tells you.
+
+```
+new order PD-7K3Q — pro from 555 (Acme IT)
+PD-7K3Q claims payment
+PD-7K3Q · pro $99 · claimed · Acme IT · <it@acme.test> · txid 0xababab…  →  /confirm PD-7K3Q
+```
+
+**The confirmation is yours, and it is the only thing that issues a licence.** A bot
+cannot check a TRC20 transfer without a blockchain API key, and trusting the buyer's word
+would either give the tool away or annoy someone who paid. So you look at the wallet —
+ten seconds — and then one message finishes the sale:
+
+```
+/orders                pending orders
+/confirm PD-7K3Q       payment verified → the signed token goes to the buyer's chat
+/issue PD-7K3Q         re-issue (a lost token, a second machine)
+/cancel PD-7K3Q        close it
+/stats                 orders and money collected
+```
+
+Only your own chat may run those; a buyer can create an order, report a payment and ask
+questions, and can never touch anyone else's order. Without the bot the same thing works
+from a shell: `pentdeck seller confirm PD-7K3Q --send`.
+
 ## What it deliberately does not do
 
 - **No exploitation.** It reports exposure; it does not break in, does not brute-force
@@ -138,6 +189,9 @@ pentdeck license request --name "Your Name" --email you@example.com --tier pro
 pentdeck license install PD1.…
 ```
 
+The dashboard's Licence page does the same thing without a terminal; on the seller's side
+it is the bot described under [Selling it](#selling-it).
+
 ### The vendor side of that flow
 
 ```bash
@@ -158,20 +212,32 @@ customers honest and makes paying the easy path.
 ## Roadmap
 
 - [x] a desktop dashboard (`pentdeck gui`) — overview, targets, scan, findings, reports, licence
+- [x] Windows executables, built and smoke-tested by CI on every tag
+- [x] the seller bot (`pentdeck seller run`): orders, payment claims, `/confirm` issues and delivers
 - [ ] SNMP default-community check, SMB signing, a full 65k port sweep with a fast path
-- [ ] the seller-side bot: `/orders`, automatic licence issuance after a payment is confirmed
 - [ ] hand a finding to [netpilot](https://github.com/sasoun1366/netpilot) to fix, with human approval
 
 ## Development
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                      # 95 tests, all offline: local servers, no network
+pytest -q                      # 144 tests, all offline: local servers, no network
 ```
 
 The tests start their own HTTP, TLS and banner servers, so nothing leaves the machine —
 which is also how you would test a scanner without a lab. The 25 dashboard tests run the
 real window under `QT_QPA_PLATFORM=offscreen` and are skipped when PyQt6 is not installed.
+The 41 seller-bot tests inject the two functions that would talk to Telegram, so the whole
+buying journey — request, transaction id, confirmation, signed token — runs in milliseconds
+without a network, an account or any money.
+
+Building the Windows executables locally:
+
+```bash
+pip install -e ".[packaging]"
+pyinstaller packaging/pentdeck-cli.spec
+pyinstaller packaging/pentdeck-gui.spec
+```
 
 ## Stay updated
 
