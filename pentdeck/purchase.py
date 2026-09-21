@@ -215,19 +215,38 @@ def collect_updates(token: str, offset: int = 0, timeout: int = 0,
     return True, messages, next_offset
 
 
+#: `Acme IT <it@acme.test>` — how a request written by an older copy of the tool (or by
+#: hand) spells the buyer.
+_CUSTOMER = re.compile(r"^(?P<name>.*?)\s*<(?P<email>[^<>\s@]+@[^<>\s]+)>$")
+
+
 def parse_order_message(text: str) -> Optional[Dict[str, str]]:
-    """Pull the fields out of a pasted request — for the seller's inbox."""
+    """Pull the fields out of a pasted request — for the seller's inbox.
+
+    Accepts the shape `pentdeck license request` writes (`name:` / `email:`) and the
+    older one-line form (`customer: Acme IT <it@acme.test>`), because a request may have
+    been written by a copy of the tool from before this parser existed — or typed by hand
+    by someone who read the wallet address off a chat message.
+    """
     fields: Dict[str, str] = {}
     for line in (text or "").splitlines():
         if ":" not in line:
             continue
         key, _, value = line.partition(":")
         key = key.strip().lower().replace(" ", "_")
+        value = value.strip()
         if key in ("order", "name", "email", "tier", "note", "txid", "memo"):
-            fields[key] = value.strip()
-    if not fields:
-        return None
-    return fields
+            fields[key] = value
+        elif key == "customer" and "name" not in fields:
+            match = _CUSTOMER.match(value)
+            if match:
+                fields["name"] = match.group("name").strip()
+                fields.setdefault("email", match.group("email").strip())
+            else:
+                fields["name"] = value
+        elif key == "memo" and "memo" not in fields:
+            fields["memo"] = value
+    return fields or None
 
 
 def format_inbox_message(message: Dict[str, Any]) -> str:

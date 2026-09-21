@@ -204,6 +204,43 @@ def test_the_code_from_the_request_is_kept_but_a_missing_one_is_replaced(home, s
     assert "299 USDT" in replies_to(sender, BUYER_CHAT)[0]
 
 
+def test_the_request_the_cli_prints_is_one_the_bot_can_read(home, sender, deliver, capsys):
+    """The bug this test exists for: the CLI wrote `customer: Name <email>` while the
+    parser looked for `name:` / `email:`, so an order taken through the bot ended up with
+    no buyer details and a token that named the order code as the customer."""
+    assert cli.main(["--home", str(home), "license", "request", "--name", "Acme IT",
+                     "--email", "it@acme.test", "--tier", "pro"]) == 0
+    printed = capsys.readouterr().out
+    fields = pur.parse_order_message(printed)
+    assert fields is not None
+    assert fields["name"] == "Acme IT"
+    assert fields["email"] == "it@acme.test"
+    assert fields["tier"].startswith("pro")
+    assert fields["order"].startswith("PD-")
+
+    book = sel.OrderBook(home)
+    handle(book, {"update_id": 1, "chat_id": BUYER_CHAT, "text": printed}, sender, deliver)
+    order = book.orders[0]
+    assert (order.name, order.email) == ("Acme IT", "it@acme.test")
+    handle(book, message("a" * 64), sender, deliver)
+    handle(book, message(f"/confirm {order.code}", SELLER_CHAT, 3), sender, deliver)
+    assert lic.decode_token(order.token, SECRET).customer == "Acme IT"
+
+
+def test_a_hand_written_customer_line_is_understood():
+    fields = pur.parse_order_message(
+        "order   : PD-7K3Q\n"
+        "customer: Acme IT <it@acme.test>\n"
+        "tier    : team\n"
+        "memo    : PD-7K3Q"
+    )
+    assert fields["name"] == "Acme IT"
+    assert fields["email"] == "it@acme.test"
+    assert fields["memo"] == "PD-7K3Q"
+    # and a customer line with no address is still a name
+    assert pur.parse_order_message("customer: Walk-in Wanda")["name"] == "Walk-in Wanda"
+
+
 def test_the_same_request_twice_does_not_create_two_orders(home, sender, deliver):
     book = sel.OrderBook(home)
     handle(book, request_message(), sender, deliver)

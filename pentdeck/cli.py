@@ -456,7 +456,8 @@ def cmd_license(args: argparse.Namespace, home: pathlib.Path) -> int:
         wallet = load_wallet(home)
         lines = [
             f"order       : {order}",
-            f"customer    : {args.name} <{args.email}>",
+            f"name        : {args.name}",
+            f"email       : {args.email}",
             f"tier        : {args.tier} (${TIERS[args.tier]['price_usd']})",
             f"amount      : {TIERS[args.tier]['price_usd']} USDT (TRC20)",
             f"wallet      : {wallet or 'no address set yet — run `pentdeck license wallet <address>`'}",

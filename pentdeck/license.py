@@ -339,8 +339,20 @@ def license_file(home: Optional[pathlib.Path] = None) -> pathlib.Path:
 
 
 def install_token(token: str, home: Optional[pathlib.Path] = None, secret: str = "") -> License:
-    """Verify and store a token. Nothing lands on disk unless it verifies."""
-    secret = secret or load_secret(home)
+    """Verify and store a token. Nothing lands on disk unless it verifies.
+
+    A licence is a signed token, so the machine that verifies it needs the key it was
+    signed with. When that key is missing, say so in the buyer's terms — "generate a
+    secret" is the right advice for a seller and the wrong advice for a customer, who
+    would end up with a secret that verifies nothing.
+    """
+    secret = secret or load_secret(home, required=False)
+    if not secret:
+        raise LicenseError(
+            "this copy has no licence key, so it cannot check a licence. Use the build "
+            "the seller sent you, or ask them for their key file (on their machine it is "
+            f"~/.pentdeck/secret). Nothing was installed."
+        )
     license_ = decode_token(token, secret)
     path = license_file(home)
     path.parent.mkdir(parents=True, exist_ok=True)
